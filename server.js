@@ -15,6 +15,9 @@ function file(req, name) {
   if (!f) throw new Error(`falta el fichero "${name}"`);
   return f.buffer;
 }
+function fileOpt(req, name) {
+  return (req.files || []).find((x) => x.fieldname === name)?.buffer;
+}
 const asPdf = (res, bytes, filename) =>
   res.type('application/pdf').set('Content-Disposition', `inline; filename="${filename}"`).send(Buffer.from(bytes));
 
@@ -33,14 +36,17 @@ app.post('/pdf/certificado-habitabilidad', upload.any(), async (req, res) => {
 app.post('/pdf/emplazamiento-situacion', upload.any(), async (req, res) => {
   try {
     const payload = parsePayload(req);
+    // capturaEmplazamiento es opcional: si no se aporta, se genera desde el Catastro por la RC.
     const pdf = await composeEmplazamiento(
       file(req, 'template'),
       payload,
       file(req, 'fotoFachada'),
-      file(req, 'capturaEmplazamiento'),
+      fileOpt(req, 'capturaEmplazamiento'),
     );
     asPdf(res, pdf, `Emplazamiento_Situacion_${payload.expedienteCodigo || 'expediente'}.pdf`);
   } catch (err) {
+    // 422 = captura del Catastro no disponible → WF04 lo enruta a Revisión (carga manual).
+    if (err.catastro) return res.status(422).json({ error: 'catastro_unavailable', message: err.message });
     res.status(400).json({ error: 'emplazamiento_failed', message: err.message });
   }
 });
