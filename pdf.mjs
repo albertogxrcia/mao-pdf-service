@@ -1,6 +1,7 @@
 // Generación de los 2 PDF de MAO (guía §9/§10). Funciones puras sobre bytes:
 // el server y el POC las comparten. Sin estado, sin disco.
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { capturaEmplazamiento } from './catastro.mjs';
 
 // --- Certificado de Habitabilidad (AcroForm A4, 3 páginas, 24 campos) ---
 // Checkboxes: estado ON = "Sí" (verificado sobre el PDF real); pdf-lib usa el
@@ -59,7 +60,21 @@ function drawContained(page, img, rect) {
   const scale = Math.min(rect.w / img.width, rect.h / img.height);
   const w = img.width * scale;
   const h = img.height * scale;
-  page.drawImage(img, { x: rect.x + (rect.w - w) / 2, y: rect.y + (rect.h - h) / 2, width: w, height: h });
+  const x = rect.x + (rect.w - w) / 2;
+  const y = rect.y + (rect.h - h) / 2;
+  page.drawImage(img, { x, y, width: w, height: h });
+  return { x, y, w, h }; // dónde quedó la imagen en la página (para dibujar overlays alineados)
+}
+
+// Contorno de la parcela sobre el mapa. La imagen WMS cubre `bbox` (cuadrado, EPSG:25831) y se
+// colocó en `placed`; ambos con Y hacia arriba → transform mundo→punto lineal y exacto (sin flip).
+function drawContorno(page, rings, bbox, placed, color = rgb(0.09, 0.15, 0.85)) {
+  const sx = placed.w / (bbox.maxX - bbox.minX);
+  const sy = placed.h / (bbox.maxY - bbox.minY);
+  const pt = ([X, Y]) => ({ x: placed.x + (X - bbox.minX) * sx, y: placed.y + (Y - bbox.minY) * sy });
+  for (const ring of rings)
+    for (let i = 0; i + 1 < ring.length; i++)
+      page.drawLine({ start: pt(ring[i]), end: pt(ring[i + 1]), thickness: 1.5, color });
 }
 
 export async function composeEmplazamiento(templateBytes, payload, fotoFachadaBytes, capturaBytes) {
@@ -68,7 +83,15 @@ export async function composeEmplazamiento(templateBytes, payload, fotoFachadaBy
   const page = doc.getPage(0);
   const font = await doc.embedFont(StandardFonts.Helvetica);
 
-  drawContained(page, await embedImage(doc, capturaBytes, 'capturaEmplazamiento'), A3.emplazamiento);
+  if (capturaBytes) {
+    // Captura aportada (override manual): se coloca tal cual, sin contorno (ya lo trae).
+    drawContained(page, await embedImage(doc, capturaBytes, 'capturaEmplazamiento'), A3.emplazamiento);
+  } else {
+    // Sin captura → se genera desde el Catastro con la ref. catastral y se dibuja el contorno.
+    const { png, bbox, rings } = await capturaEmplazamiento(empl.referenciaCatastral);
+    const placed = drawContained(page, await doc.embedPng(png), A3.emplazamiento);
+    drawContorno(page, rings, bbox, placed);
+  }
   drawContained(page, await embedImage(doc, fotoFachadaBytes, 'fotoFachada'), A3.fotoFachada);
 
   const texto = (t, pos) =>
