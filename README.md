@@ -4,7 +4,7 @@ Genera los 2 documentos finales (guía §9/§10) fuera de n8n:
 
 | Endpoint | Multipart fields | Respuesta |
 |---|---|---|
-| `POST /pdf/certificado-habitabilidad` | `payload` (JSON string) + `template` (CertifHabitabilidad_Vacio.pdf) | `application/pdf` A4 3 págs, AcroForm relleno y aplanado |
+| `POST /pdf/certificado-habitabilidad` | `payload` (JSON string) + `template` (CertifHabitabilidad_Vacio.pdf) | `application/pdf` A4 3 págs, AcroForm relleno **editable** (sin aplanar: Marta/Jorge corrigen a mano; la firma es el candado) |
 | `POST /pdf/emplazamiento-situacion` | `payload` + `template` (Emplazamiento_Plantilla.pdf) + `fotoFachada` (JPG/PNG) + `capturaEmplazamiento` (JPG/PNG, **opcional**) | `application/pdf` A3 compuesto |
 | `GET /health` | — | `{ok:true}` |
 

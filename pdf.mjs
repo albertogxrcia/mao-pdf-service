@@ -33,7 +33,12 @@ export async function fillCertificado(templateBytes, payload) {
     form.getTextField(m[1]).setText(String(value ?? ''));
   }
 
-  form.flatten(); // los 3 ejemplares (widgets por página) quedan escritos y no editables
+  // No aplanamos a propósito: el certificado queda editable para que Marta/Jorge
+  // corrijan erratas a mano (no tienen acceso a n8n). La firma de Marta es el candado
+  // real. Los 3 ejemplares son widgets de un mismo campo → corregir una vez actualiza
+  // los 3. save() regenera los appearance streams (updateFieldAppearances por defecto)
+  // así que los valores se ven rellenos sin necesidad de aplanar.
+  // ponytail: sin flatten a propósito; si el Consell exigiera PDF plano, re-añadir form.flatten().
   return doc.save();
 }
 
