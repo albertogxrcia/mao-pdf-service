@@ -76,6 +76,32 @@ export function rc14de(rcCompleta) {
   return rc;
 }
 
+// Localización interna del inmueble (bloque/escalera/planta/puerta) desde los datos NO
+// protegidos del Catastro: Consulta_DNPRC devuelve <loint> con bq/es/pt/pu. La cédula pide
+// esos 4 campos y el técnico a menudo no los manda → quedaban vacíos.
+// BEST-EFFORT a propósito: cualquier fallo (servicio caído, RC rara, inmueble sin escalera)
+// devuelve {} y el certificado se genera igual con el hueco vacío, como hasta ahora.
+// ponytail: regex sobre el XML en vez de un parser; la respuesta es plana y estable.
+const OVC = 'https://ovc.catastro.meh.es/ovcservweb/OVCSWLocalizacionRC/OVCCallejero.asmx/Consulta_DNPRC';
+
+export async function localizacionInterna(rcCompleta, ms = 8000) {
+  const rc = String(rcCompleta || '').replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+  if (rc.length !== 20) return {}; // solo la RC completa identifica el inmueble (los 14 son la parcela)
+  let xml;
+  try {
+    const r = await fetch(`${OVC}?Provincia=&Municipio=&RC=${rc}`, { signal: AbortSignal.timeout(ms) });
+    if (!r.ok) return {};
+    xml = await r.text();
+  } catch {
+    return {};
+  }
+  // El primer <loint> es el del bien inmueble consultado (los siguientes son los de sus
+  // construcciones, mismos valores). <des> = el Catastro devolvió un error → sin datos.
+  const loint = xml.match(/<loint>([\s\S]*?)<\/loint>/)?.[1] || '';
+  const tag = (t) => (loint.match(new RegExp(`<${t}>([^<]*)</${t}>`))?.[1] || '').trim();
+  return { bloque: tag('bq'), escalera: tag('es'), piso: tag('pt'), puerta: tag('pu') };
+}
+
 export async function capturaEmplazamiento(rcCompleta) {
   const rc14 = rc14de(rcCompleta);
   const rings = await geometria(rc14);

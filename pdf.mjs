@@ -1,7 +1,7 @@
 // Generación de los 2 PDF de MAO (guía §9/§10). Funciones puras sobre bytes:
 // el server y el POC las comparten. Sin estado, sin disco.
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { capturaEmplazamiento } from './catastro.mjs';
+import { capturaEmplazamiento, localizacionInterna } from './catastro.mjs';
 
 // --- Certificado de Habitabilidad (AcroForm A4, 3 páginas, 24 campos) ---
 // Checkboxes: estado ON = "Sí" (verificado sobre el PDF real); pdf-lib usa el
@@ -14,8 +14,26 @@ const CASILLAS = {
   edificioResidencialNoVivienda: 'Casilla de verificación5',
 };
 
+// Bloque/escalera/planta/puerta: el técnico a menudo no los manda y la cédula salía con esos
+// huecos en blanco. El Catastro los tiene (Consulta_DNPRC por RC) → se rellenan solos.
+// Solo se tocan los HUECOS: lo que venga del email/expediente siempre manda.
+const LOCALIZACION = {
+  Texto11_bloque: 'bloque',
+  Texto12_escalera: 'escalera',
+  Texto13_piso: 'piso',
+  Texto14_puerta: 'puerta',
+};
+
 export async function fillCertificado(templateBytes, payload) {
-  const cert = payload.certificadoHabitabilidad || {};
+  const cert = { ...(payload.certificadoHabitabilidad || {}) };
+
+  if (Object.keys(LOCALIZACION).some((k) => !String(cert[k] ?? '').trim())) {
+    const cat = await localizacionInterna(cert.Texto8_referenciaCatastral);
+    for (const [campo, dato] of Object.entries(LOCALIZACION)) {
+      if (!String(cert[campo] ?? '').trim() && cat[dato]) cert[campo] = cat[dato];
+    }
+  }
+
   const doc = await PDFDocument.load(templateBytes);
   const form = doc.getForm();
 
